@@ -1,0 +1,18 @@
+{
+    "format_version": 2,
+    "header": {
+        "description": "Easy to set up capture the flag system. Made so you can make your own maps.",
+        "name": "§4Capture §athe §1Flag §b[B]",
+        "uuid": "26c4d89d-11fb-4062-bb86-c087d9a69b4b",
+        "version": [ 0, 0, 1 ],
+        "min_engine_version": [ 1, 17, 0 ]
+    },
+    "modules": [
+        {
+            "description": "Easy to set up capture the flag system. Made so you can make your own maps.",
+            "type": "data",
+            "uuid": "55e31006-dbb7-49db-abc7-f1c190a9e742",
+            "version": [0, 0, 1]
+        }
+    ]
+}

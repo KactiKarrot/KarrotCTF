@@ -1,0 +1,17 @@
+{
+  "format_version": "1.8.0",
+  "render_controllers": {
+    "controller.render.player.outline": {
+      "geometry": "Array.geo[query.is_swimming]",
+      "materials": [ { "*": "Material.emissive" } ],
+
+      "arrays": {
+        "geometries": { "Array.geo": [ "geometry.outline", "geometry.outline_swimming"] },
+		"textures": { "Array.states": [ "Texture.outlineoff", "Texture.outline" ] }
+      },
+	  "textures": [ "Array.states[query.variant]" ],
+      "is_hurt_color":{},
+      "on_fire_color":{}
+    }
+  }
+}
