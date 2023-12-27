@@ -1,0 +1,25 @@
+{
+    "format_version": 2,
+    "header": {
+      "name": "KarrotCTF [B]",
+      "description": "§bCapture the Flag Behavior Pack\n§6By KactiKarrot",
+      "uuid": "552cce60-952c-444d-be65-b611d45af06e",
+      "version": [1, 0, 0],
+      "min_engine_version": [1, 20, 0]
+    },
+    "modules": [
+      {
+        "type": "script",
+        "language": "javascript",
+        "uuid": "3a80219f-1a80-46d5-8ce8-f4f56f43f5a5",
+        "entry": "scripts/main.js",
+        "version": [0, 1, 0]
+      }
+    ],
+    "dependencies": [
+      {
+        "module_name": "@minecraft/server",
+        "version": "1.8.0-beta"
+      }
+    ]
+  }

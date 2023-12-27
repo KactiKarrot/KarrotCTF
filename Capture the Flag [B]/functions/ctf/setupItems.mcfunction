@@ -1,1 +1,0 @@
-structure load ctfSetupItems(nametags) ~ ~ ~ 0_degrees none true false

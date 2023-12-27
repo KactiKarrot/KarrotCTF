@@ -1,1 +1,0 @@
-say "The timer is done"
