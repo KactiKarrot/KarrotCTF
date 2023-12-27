@@ -1,4 +1,4 @@
-import { BlockVolume, BlockPermutation, ItemStack, Vector3, system, ScriptEventSource, Player, Camera } from '@minecraft/server'
+import { BlockVolume, BlockPermutation, ItemStack, Vector3, system, ScriptEventSource, Player, Camera, ScriptEventCommandMessageAfterEvent, world } from '@minecraft/server'
 
 function parseArgs(s: string): {failed: boolean, result: string | string[]} {
     let split = s.split(' ');
@@ -21,6 +21,35 @@ function parseArgs(s: string): {failed: boolean, result: string | string[]} {
     return {failed: false, result: split};
 }
 
+function floorVector3(a: Vector3) {
+    let floor: Vector3 = {
+        x: Math.floor(a.x),
+        y: Math.floor(a.y),
+        z: Math.floor(a.z)
+    }
+    return floor
+}
+
+function replacer(key, value) {
+    if(value instanceof Map) {
+        return {
+            dataType: 'Map',
+            value: Array.from(value.entries()), // or with spread: value: [...value]
+        };
+    } else {
+        return value;
+    }
+  }
+
+function reviver(key, value) {
+    if(typeof value === 'object' && value !== null) {
+        if (value.dataType === 'Map') {
+            return new Map(value.value);
+        }
+    }
+    return value;
+}
+
 function hasTeam(teams: Team[], target: Teams): boolean {
     teams.forEach((e) => {
         if (e.color == target) {
@@ -30,10 +59,16 @@ function hasTeam(teams: Team[], target: Teams): boolean {
     return false;
 }
 
+function sendMessage(e: ScriptEventCommandMessageAfterEvent, s: string) {
+    if (e.sourceType == ScriptEventSource.Entity && e.sourceEntity.typeId == 'minecraft:player') {
+        (e.sourceEntity as Player).sendMessage(s);
+    }
+}
+
 interface Team {
     color: Teams,
-    FlagPos: Vector3,
-    FlagState: BlockPermutation
+    flagPos: Vector3,
+    flagState: BlockPermutation
 }
 
 enum Teams {
@@ -66,20 +101,26 @@ interface GameMap {
 
 let maps = new Map<string, GameMap>();
 
-system.afterEvents.scriptEventReceive.subscribe((event) => {
-    let parsed = parseArgs(event.message)
+function saveMaps() {
+    world.setDynamicProperty('karrot:ctfmaps', JSON.stringify(maps, replacer));
+}
+
+world.afterEvents.worldInitialize.subscribe((data) => {
+    if (world.getDynamicProperty('karrot:ctfmaps') != undefined) {
+        maps = JSON.parse(world.getDynamicProperty('karrot:ctfmaps') as string, reviver);
+    }
+})
+
+system.afterEvents.scriptEventReceive.subscribe((e) => {
+    let parsed = parseArgs(e.message)
     if (parsed.failed) {
-        if (event.sourceType == ScriptEventSource.Entity && event.sourceEntity.typeId == 'minecraft:player') {
-            (event.sourceEntity as Player).sendMessage('§cERROR: ' + parsed.result);
-        }
+        sendMessage(e, '§cERROR: ' + parsed.result)
     }
     let args = parsed.result as string[];
-    switch (event.id.toLowerCase()) {
+    switch (e.id.toLowerCase()) {
         //help
         case 'ctf:help': {
-            if (event.sourceType == ScriptEventSource.Entity && event.sourceEntity.typeId == 'minecraft:player') {
-                (event.sourceEntity as Player).sendMessage('help\nexport\nimport\n');
-            }
+            sendMessage(e, 'help\nexport\nimport\n')
             break;
         }
         //export
@@ -97,9 +138,7 @@ system.afterEvents.scriptEventReceive.subscribe((event) => {
         //addmap <id: string> <name: string> <startPos: x y z> <endPos: x y z>
         case 'ctf:addmap': {
             if (args.length < 8) {
-                if (event.sourceType == ScriptEventSource.Entity && event.sourceEntity.typeId == 'minecraft:player') {
-                    (event.sourceEntity as Player).sendMessage('§cERROR: Not enough arguments');
-                }
+                sendMessage(e, '§cERROR: Not enough arguments')
             }
             let id = args[0];
             if (maps.has(id)) {
@@ -119,39 +158,29 @@ system.afterEvents.scriptEventReceive.subscribe((event) => {
                 kit: [],
                 area: {from: start, to: end}
             })
-            if (event.sourceType == ScriptEventSource.Entity && event.sourceEntity.typeId == 'minecraft:player') {
-                (event.sourceEntity as Player).sendMessage('§aAdded map ' + id);
-            }
+            sendMessage(e, '§aAdded map ' + id)
             break;
         }
         //delmap <id: string>
         case 'ctf:delmap': {
             if (args.length < 1) {
-                if (event.sourceType == ScriptEventSource.Entity && event.sourceEntity.typeId == 'minecraft:player') {
-                    (event.sourceEntity as Player).sendMessage('§cERROR: Not enough arguments');
-                }
+                sendMessage(e, '§cERROR: Not enough arguments')
+                return;
             }
-            if (!maps.has(args[0])) {
-                if (event.sourceType == ScriptEventSource.Entity && event.sourceEntity.typeId == 'minecraft:player') {
-                    (event.sourceEntity as Player).sendMessage('§cERROR: Map ' + args[0] + ' does not exist');
-                }
-            }
-            if (maps.delete(args[0]) && event.sourceType == ScriptEventSource.Entity && event.sourceEntity.typeId == 'minecraft:player') {
-                (event.sourceEntity as Player).sendMessage('§aRemoved map ' + args[0]);
+            if (maps.delete(args[0])) {
+                sendMessage(e, '§aRemoved map ' + args[0]);
+            } else {
+                sendMessage(e, '§cERROR: Map ' + args[0] + ' does not exist');
             }
             break;
         }
-        //addteam <map: string> <team: Team>
+        //addteam <map: string> <team: Team> <flagPos: x y z>
         case 'ctf:addteam': {
             if (args.length < 2) {
-                if (event.sourceType == ScriptEventSource.Entity && event.sourceEntity.typeId == 'minecraft:player') {
-                    (event.sourceEntity as Player).sendMessage('§cERROR: Not enough arguments');
-                }
+                sendMessage(e, '§cERROR: Not enough arguments');
             }
             if (!maps.has(args[0])) {
-                if (event.sourceType == ScriptEventSource.Entity && event.sourceEntity.typeId == 'minecraft:player') {
-                    (event.sourceEntity as Player).sendMessage('§cERROR: Map ' + args[0] + ' does not exist');
-                }
+                sendMessage(e, '§cERROR: Map ' + args[0] + ' does not exist');
             }
             let team: Teams;
             switch (args[1].toLowerCase()) {
@@ -171,27 +200,66 @@ system.afterEvents.scriptEventReceive.subscribe((event) => {
                     team = Teams.YELLOW;
                     break;
                 }
-            }
-            if (hasTeam(maps.get(args[0]).teams, team)) {
-                if (event.sourceType == ScriptEventSource.Entity && event.sourceEntity.typeId == 'minecraft:player') {
-                    (event.sourceEntity as Player).sendMessage('§cERROR: Map ' + args[0] + ' does not exist');
+                default: {
+                    sendMessage(e, '§cERROR: Invalid team: ' + args[1])
+                    return;
                 }
             }
+            if (hasTeam(maps.get(args[0]).teams, team)) {
+                sendMessage(e, '§cERROR: Team already exists on map ' + args[0]);
+                return;
+            }
+            for (let i = 2; i < 5; i++) {
+                if (isNaN(parseInt(args[i]))) {
+                    return
+                }
+            }
+            let pos = {x: parseInt(args[2]), y: parseInt(args[3]), z: parseInt(args[4])}
+            maps.get(args[0]).teams.push({color: team, flagPos: pos, flagState: (e.sourceType == ScriptEventSource.Entity ? e.sourceEntity.dimension.getBlock(pos) : e.sourceBlock.dimension.getBlock(pos)).permutation.clone()})
+            saveMaps();
+            sendMessage(e, `§aAdded ${team} to map ${args[0]}`);
             break;
         }
         //delteam <map: string> <team: Team>
         case 'ctf:delteam': {
             if (args.length < 2) {
-                if (event.sourceType == ScriptEventSource.Entity && event.sourceEntity.typeId == 'minecraft:player') {
-                    (event.sourceEntity as Player).sendMessage('§cERROR: Not enough arguments');
-                }
+                sendMessage(e, '§cERROR: Not enough arguments')
             }
             if (!maps.has(args[0])) {
-                if (event.sourceType == ScriptEventSource.Entity && event.sourceEntity.typeId == 'minecraft:player') {
-                    (event.sourceEntity as Player).sendMessage('§cERROR: Map ' + args[0] + ' does not exist');
+                sendMessage(e, '§cERROR: Map ' + args[0] + ' does not exist')
+            }
+            let team: Teams;
+            switch (args[1].toLowerCase()) {
+                case 'red': {
+                    team = Teams.RED;
+                    break;
+                }
+                case 'blue': {
+                    team = Teams.BLUE;
+                    break;
+                }
+                case 'green': {
+                    team = Teams.GREEN;
+                    break;
+                }
+                case 'yellow': {
+                    team = Teams.YELLOW;
+                    break;
+                }
+                default: {
+                    sendMessage(e, '§cERROR: Invalid team: ' + args[1])
+                    return;
                 }
             }
-
+            if (!hasTeam(maps.get(args[0]).teams, team)) {
+                sendMessage(e, '§cERROR: Team does exist on map ' + args[0]);
+            }
+            maps.get(args[0]).teams.splice(
+                maps.get(args[0]).teams.findIndex(t => {
+                    return t.color == team;
+                }), 1
+            );
+            sendMessage(e, 'Removed team from map ' + args[0]);
             break;
         }
         //setspawn <map: string> <team: Team>
