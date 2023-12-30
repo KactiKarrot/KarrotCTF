@@ -546,11 +546,13 @@ system.afterEvents.scriptEventReceive.subscribe((e) => {
                 return;
             }
             startGame(args[0]);
+            break;
         }
         case 'ctf:stop': {
             running = false;
-            world.scoreboard.removeObjective('ctf');
             currentMap = undefined;
+            world.scoreboard.removeObjective('ctf');
+            break;
         }
     }
 }, { namespaces: ['ctf'] });
@@ -591,6 +593,8 @@ async function startGame(map) {
             setInvToKit(p, currentMap.m);
             p.teleport(currentMap.m.teams[i].spawnPos);
             p.runCommand('inputpermission set @s movement disabled');
+            p.runCommand('gamemode adventure @s');
+            p.addEffect('saturation', 20000000, { amplifier: 255, showParticles: false });
         });
     });
     await preview(teams[0], currentMap.m);
@@ -618,9 +622,6 @@ async function startGame(map) {
     });
     running = true;
     players = world.getPlayers({ tags: ['ctf'] });
-    world.getAllPlayers().forEach((p) => {
-        p.sendMessage(typeof (players));
-    });
     players.forEach((p) => {
         p.onScreenDisplay.setTitle('§b' + currentMap.m.name);
     });
@@ -727,24 +728,31 @@ system.runInterval(() => {
                         if (p.runCommand(`clear @s banner ${teamToData(t.color)}`).successCount > 0) {
                             p.dimension.getBlock(t.flagPos).setPermutation(BlockPermutation.resolve(t.flagId, t.flagStates));
                         }
-                        switch (t.color) {
-                            case Teams.RED: {
-                                objective.addScore('§4Red Team', p.runCommand('clear @s banner').successCount);
-                                break;
+                        currentMap.m.teams.forEach(team => {
+                            if (team.color != t.color) {
+                                if (p.runCommand(`clear @s banner ${teamToData(team.color)}`).successCount > 0) {
+                                    switch (t.color) {
+                                        case Teams.RED: {
+                                            objective.addScore('§4Red Team', 1);
+                                            break;
+                                        }
+                                        case Teams.BLUE: {
+                                            objective.addScore('§1Blue Team', 1);
+                                            break;
+                                        }
+                                        case Teams.GREEN: {
+                                            objective.addScore('§aGreen Team', 1);
+                                            break;
+                                        }
+                                        case Teams.YELLOW: {
+                                            objective.addScore('§gYellow Team', 1);
+                                            break;
+                                        }
+                                    }
+                                    p.dimension.getBlock(team.flagPos).setPermutation(BlockPermutation.resolve(team.flagId, team.flagStates));
+                                }
                             }
-                            case Teams.BLUE: {
-                                objective.addScore('§1Blue Team', p.runCommand('clear @s banner').successCount);
-                                break;
-                            }
-                            case Teams.GREEN: {
-                                objective.addScore('§aGreen Team', p.runCommand('clear @s banner').successCount);
-                                break;
-                            }
-                            case Teams.YELLOW: {
-                                objective.addScore('§gYellow Team', p.runCommand('clear @s banner').successCount);
-                                break;
-                            }
-                        }
+                        });
                     }
                 });
                 if (p.runCommand(`testfor @s[hasitem={item=banner, data=1}]`).successCount > 0) {
