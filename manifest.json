@@ -3,7 +3,7 @@
     "header": {
       "name": "KarrotCTF [B]",
       "description": "§bCapture the Flag Behavior Pack\n§6By KactiKarrot",
-      "uuid": "552cce60-952c-444d-be65-b611d45af06e",
+      "uuid": "43a6d1cf-98ba-4a02-a9d2-57baa4773e86",
       "version": [1, 0, 0],
       "min_engine_version": [1, 20, 0]
     },
@@ -11,7 +11,7 @@
       {
         "type": "script",
         "language": "javascript",
-        "uuid": "3a80219f-1a80-46d5-8ce8-f4f56f43f5a5",
+        "uuid": "d8ad51a6-c186-4d33-941f-ed97c89f45b8",
         "entry": "scripts/main.js",
         "version": [0, 1, 0]
       }
