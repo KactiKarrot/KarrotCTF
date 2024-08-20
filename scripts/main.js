@@ -1,4 +1,4 @@
-import { BlockPermutation, system, ScriptEventSource, world, EquipmentSlot, EasingType, DisplaySlotId } from '@minecraft/server';
+import { BlockVolume, BlockPermutation, system, ScriptEventSource, world, EquipmentSlot, EasingType, DisplaySlotId } from '@minecraft/server';
 function parseArgs(s) {
     let split = s.split(' ');
     split.forEach((e, i) => {
@@ -176,7 +176,7 @@ system.afterEvents.scriptEventReceive.subscribe((e) => {
                 name: name,
                 teams: [],
                 kitPos: { x: Infinity, y: Infinity, z: Infinity },
-                area: { from: start, to: end }
+                area: new BlockVolume(start, end)
             });
             saveMaps();
             sendMessage(e, '§aAdded map ' + id);
@@ -549,9 +549,7 @@ system.afterEvents.scriptEventReceive.subscribe((e) => {
             break;
         }
         case 'ctf:stop': {
-            running = false;
-            currentMap = undefined;
-            world.scoreboard.removeObjective('ctf');
+            stopGame();
             break;
         }
     }
@@ -595,33 +593,38 @@ async function startGame(map) {
             p.runCommand('inputpermission set @s movement disabled');
             p.runCommand('gamemode adventure @s');
             p.addEffect('saturation', 20000000, { amplifier: 255, showParticles: false });
+            p.addEffect('resistance', 3, { amplifier: 255, showParticles: false });
         });
     });
-    await preview(teams[0], currentMap.m);
+    players = world.getPlayers({ tags: ['ctf'] });
+    await preview(players, currentMap.m);
     let objective = world.scoreboard.addObjective('ctf', '§aCapture the Flag: §b' + currentMap.m.name);
     world.scoreboard.setObjectiveAtDisplaySlot(DisplaySlotId.Sidebar, { objective: objective });
     currentMap.m.teams.forEach(t => {
         switch (t.color) {
             case Teams.RED: {
                 objective.setScore('§4Red Team', 0);
+                world.getDimension('minecraft:overworld').getBlock(t.flagPos).setPermutation(BlockPermutation.resolve(t.flagId, t.flagStates));
                 break;
             }
             case Teams.BLUE: {
                 objective.setScore('§1Blue Team', 0);
+                world.getDimension('minecraft:overworld').getBlock(t.flagPos).setPermutation(BlockPermutation.resolve(t.flagId, t.flagStates));
                 break;
             }
             case Teams.GREEN: {
                 objective.setScore('§aGreen Team', 0);
+                world.getDimension('minecraft:overworld').getBlock(t.flagPos).setPermutation(BlockPermutation.resolve(t.flagId, t.flagStates));
                 break;
             }
             case Teams.YELLOW: {
                 objective.setScore('§gYellow Team', 0);
+                world.getDimension('minecraft:overworld').getBlock(t.flagPos).setPermutation(BlockPermutation.resolve(t.flagId, t.flagStates));
                 break;
             }
         }
     });
     running = true;
-    players = world.getPlayers({ tags: ['ctf'] });
     players.forEach((p) => {
         p.onScreenDisplay.setTitle('§b' + currentMap.m.name);
     });
@@ -643,6 +646,21 @@ async function startGame(map) {
         p.runCommand('inputpermission set @s movement enabled');
     });
 }
+function stopGame() {
+    running = false;
+    currentMap = undefined;
+    world.scoreboard.removeObjective('ctf');
+    world.getPlayers({ tags: ['ctf'] }).forEach(p => {
+        p.getTags().forEach(t => {
+            if (t.startsWith('ctf:')) {
+                p.removeTag(t);
+            }
+        });
+        p.runCommand('clear @s');
+        p.setSpawnPoint();
+        p.kill();
+    });
+}
 function setInvToKit(p, map) {
     p.runCommand('clear @s');
     if (map.kitPos.x == Infinity) {
@@ -662,19 +680,22 @@ function setInvToKit(p, map) {
 world.afterEvents.playerSpawn.subscribe(e => {
     if (e.player.hasTag("ctf") && running) {
         setInvToKit(e.player, currentMap.m);
+        e.player.addEffect('saturation', 20000000, { amplifier: 255, showParticles: false });
+        e.player.addEffect('resistance', 3, { amplifier: 255, showParticles: false });
     }
 });
-function gameOver(winner) {
+async function gameOver(winner) {
     running = false;
     currentMap = undefined;
     world.getPlayers({ tags: ['ctf'] }).forEach(p => {
+        p.runCommand('gamemode spectator @s');
         p.onScreenDisplay.setTitle('§a' + winner + ' team wins!');
-        p.getTags().forEach(t => {
-            if (t.startsWith('ctf:')) {
-                p.removeTag(t);
-            }
-        });
     });
+    await sleep(60);
+    world.getPlayers({ tags: ['ctf'] }).forEach(p => {
+        p.runCommand('gamemode adventure @s');
+    });
+    stopGame();
 }
 function hDistance(p, pos) {
     return Math.sqrt(Math.pow(Math.abs(Math.floor(p.location.x) - pos.x), 2) + Math.pow(Math.abs(Math.floor(p.location.z) - pos.z), 2));
@@ -704,19 +725,19 @@ system.runInterval(() => {
     let greenFlag;
     let yellowFlag;
     let objective = world.scoreboard.getObjective('ctf');
-    if (objective.hasParticipant('§4Red Team') && objective.getScore('§4Red Team') >= 5) {
+    if (objective.hasParticipant('§4Red Team') && objective.getScore('§4Red Team') >= 3) {
         gameOver(Teams.RED);
         return;
     }
-    else if (objective.hasParticipant('§1Blue Team') && objective.getScore('§1Blue Team') >= 5) {
+    else if (objective.hasParticipant('§1Blue Team') && objective.getScore('§1Blue Team') >= 3) {
         gameOver(Teams.BLUE);
         return;
     }
-    else if (objective.hasParticipant('§aGreen Team') && objective.getScore('§aGreen Team') >= 5) {
+    else if (objective.hasParticipant('§aGreen Team') && objective.getScore('§aGreen Team') >= 3) {
         gameOver(Teams.GREEN);
         return;
     }
-    else if (objective.hasParticipant('§gYellow Team') && objective.getScore('§gYellow Team') >= 5) {
+    else if (objective.hasParticipant('§gYellow Team') && objective.getScore('§gYellow Team') >= 3) {
         gameOver(Teams.YELLOW);
         return;
     }
@@ -734,18 +755,30 @@ system.runInterval(() => {
                                     switch (t.color) {
                                         case Teams.RED: {
                                             objective.addScore('§4Red Team', 1);
+                                            world.getPlayers({ tags: ['ctf'] }).forEach(p2 => {
+                                                p2.onScreenDisplay.setTitle('§aRed Team Scored');
+                                            });
                                             break;
                                         }
                                         case Teams.BLUE: {
                                             objective.addScore('§1Blue Team', 1);
+                                            world.getPlayers({ tags: ['ctf'] }).forEach(p2 => {
+                                                p2.onScreenDisplay.setTitle('§aBlue Team Scored');
+                                            });
                                             break;
                                         }
                                         case Teams.GREEN: {
                                             objective.addScore('§aGreen Team', 1);
+                                            world.getPlayers({ tags: ['ctf'] }).forEach(p2 => {
+                                                p2.onScreenDisplay.setTitle('§aGreen Team Scored');
+                                            });
                                             break;
                                         }
                                         case Teams.YELLOW: {
                                             objective.addScore('§gYellow Team', 1);
+                                            world.getPlayers({ tags: ['ctf'] }).forEach(p2 => {
+                                                p2.onScreenDisplay.setTitle('§aYellow Team Scored');
+                                            });
                                             break;
                                         }
                                     }
@@ -805,14 +838,14 @@ system.runInterval(() => {
 system.runInterval(() => {
     if (running && currentMap != undefined) {
         currentMap.m.teams.forEach(t => {
-            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x + 1}.0 ${t.flagPos.y}.0 ${t.flagPos.z}.0`);
-            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x - 1}.0 ${t.flagPos.y}.0 ${t.flagPos.z}.0`);
-            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x}.0 ${t.flagPos.y}.0 ${t.flagPos.z + 1}.0`);
-            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x}.0 ${t.flagPos.y}.0 ${t.flagPos.z - 1}.0`);
-            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x + 0.75} ${t.flagPos.y}.0 ${t.flagPos.z - 0.75}`);
-            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x - 0.75} ${t.flagPos.y}.0 ${t.flagPos.z + 0.75}`);
-            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x + 0.75} ${t.flagPos.y}.0 ${t.flagPos.z + 0.75}`);
-            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x - 0.75} ${t.flagPos.y}.0 ${t.flagPos.z - 0.75}`);
+            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x - 1 + 0.5} ${t.flagPos.y}.0 ${t.flagPos.z + 0.5}`);
+            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x + 1 + 0.5} ${t.flagPos.y}.0 ${t.flagPos.z + 0.5}`);
+            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x + 0.5} ${t.flagPos.y}.0 ${t.flagPos.z + 1 + 0.5}`);
+            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x + 0.5} ${t.flagPos.y}.0 ${t.flagPos.z - 1 + 0.5}`);
+            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x + 0.75 + 0.5} ${t.flagPos.y}.0 ${t.flagPos.z - 0.75 + 0.5}`);
+            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x - 0.75 + 0.5} ${t.flagPos.y}.0 ${t.flagPos.z + 0.75 + 0.5}`);
+            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x + 0.75 + 0.5} ${t.flagPos.y}.0 ${t.flagPos.z + 0.75 + 0.5}`);
+            world.getDimension('minecraft:overworld').runCommand(`particle ctf:${t.color} ${t.flagPos.x - 0.75 + 0.5} ${t.flagPos.y}.0 ${t.flagPos.z - 0.75 + 0.5}`);
         });
     }
 }, 15);
